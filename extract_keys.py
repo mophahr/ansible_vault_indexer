@@ -99,7 +99,10 @@ def get_decrypted_file_contents(vault_file_name, vault_password):
     '''
     _, _, text_contents = open_vault(vault_file_name, vault_password)
 
-    return yaml.safe_load(text_contents)
+    if len(text_contents) <= 1:
+        return yaml.safe_load("{}")
+    else:
+        return yaml.safe_load(text_contents)
 
 def create_mapping_file(file_name, vault_data_structure):
     '''
