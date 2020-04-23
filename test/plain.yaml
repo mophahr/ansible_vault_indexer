@@ -1,0 +1,29 @@
+multiline_chevron: >
+  bracket line one
+  bracket line two
+
+multiline_pipe: |
+  pipe line one
+  pipe line two
+
+unsave_tag: !unsave 'string with unsafe tag in front'
+
+list:
+  - list_key_1: list_value_1
+  - list_key_2: list_value_2
+  - list_list_1:
+      - sublist_key_a: sublist_value_a
+      - sublist_key_b: sublist_value_b
+  - list_dictionary:
+      subdict_key_1: subdict_value_1
+      subdict_key_2: subdict_value_2
+
+dictionary:
+  dict_key_1: dict_value_1
+  dict_key_2: dict_value_2
+  dict_list_1:
+    - sublist_key_a: sublist_value_a
+    - sublist_key_b: sublist_value_b
+  dict_dictionary:
+    subdict_key_1: subdict_value_1
+    subdict_key_2: subdict_value_2
