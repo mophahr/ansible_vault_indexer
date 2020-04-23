@@ -6,7 +6,7 @@ multiline_pipe: |
   pipe line one
   pipe line two
 
-unsave_tag: !unsave 'string with unsafe tag in front'
+unsafe_tag: !unsafe 'string with unsafe tag in front'
 
 list:
   - list_key_1: list_value_1

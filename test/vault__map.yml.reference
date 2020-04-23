@@ -1,0 +1,30 @@
+# data structure:
+secret_structure__vault:
+  dictionary:
+    dict_dictionary:
+      subdict_key_1: secret
+      subdict_key_2: secret
+    dict_key_1: secret
+    dict_key_2: secret
+    dict_list_1:
+    - sublist_key_a: secret
+    - sublist_key_b: secret
+  list:
+  - list_key_1: secret
+  - list_key_2: secret
+  - list_list_1:
+    - sublist_key_a: secret
+    - sublist_key_b: secret
+  - list_dictionary:
+      subdict_key_1: secret
+      subdict_key_2: secret
+  multiline_chevron: secret
+  multiline_pipe: secret
+  unsave_tag: secret
+
+# mapping to vaulted_variables:
+multiline_chevron: '{{ vault_multiline_chevron }}'
+multiline_pipe: '{{ vault_multiline_pipe }}'
+unsave_tag: '{{ vault_unsave_tag }}'
+list: '{{ vault_list }}'
+dictionary: '{{ vault_dictionary }}'

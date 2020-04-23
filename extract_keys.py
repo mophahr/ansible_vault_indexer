@@ -1,31 +1,21 @@
+#!/usr/bin/env python
+
 import os
 import ansible
 from argparse import ArgumentParser
+from ansible.parsing.vault import VaultLib, VaultSecret
+from ansible.module_utils._text import to_bytes, to_text
 from ansible_vault import Vault
 from getpass import getpass
 import yaml
+import re
 
-class Unsafe(yaml.YAMLObject):
-    yaml_tag = '!unsafe'
-
-    def __init__(self, value):
-        self.value = value
-
-    def __repr__(self):
-        return 'Unsafe({})'.format(self.value)
-
-    @classmethod
-    def from_yaml(cls, loader, node):
-        return Unsafe(node.value)
-
-    @classmethod
-    def to_yaml(cls, dumper, data):
-        return dumper.represent_scalar(cls.yaml_tag, data.value)
-
-# def unsafe_tag_constructor(loader, node):
-#     # since we don't cate about the values here, all we need to return is some string
-#     print(node)
-#     return node.tag + " " + node.value
+def unsafe_tag_constructor(loader, node):
+    '''
+    This constructor is needed to avoid errors caused by the `!unsafe` tag
+    Since we don't care about the values here, all we need to return is some string
+    '''
+    return "unsafe tag string"
 
 def get_command_line_arguments():
     parser = ArgumentParser()
@@ -39,18 +29,27 @@ def get_command_line_arguments():
     return parser.parse_args()
 
 def get_file_list(dir_name):
+    '''
+    return all files in the directory tree that end on ".yml" but exclude files ending on "__map.yml"
+    '''
     list_of_files = list()
     for (dir_path, _, file_names) in os.walk(dir_name):
         list_of_files += [os.path.join(dir_path, file) for file in file_names if file.endswith(".yml") and not file.endswith("__map.yml")]
     return list_of_files
 
 def get_vault_password(args):
+    '''
+    return the vault password
+    '''
     if args.ansible_vault_password is None:
         return(getpass("Ansible vault password: "))
     else:
         return(args.ansible_vault_password)
 
 def get_structure(data):
+    '''
+    return the structure of `data`, i.e. all the keys but none of the values
+    '''
     if type(data) == list:
         keys = []
         for list_element in data:
@@ -65,38 +64,55 @@ def get_structure(data):
                 keys.update({key:get_structure(value)})
         return keys
 
-
 def get_decrypted_file_contents(file_name, vault):
     raw_data = vault.load_raw(open(file_name).read())
-    return yaml.load(raw_data)
+    return yaml.safe_load(raw_data)
+
+def add_vault_prefixes(vault_file_name, vault_password):
+    '''
+    att the prefix `vault_` to all top level variable names
+    '''
+
+    # matches any word that's not a comment and that doesn't start with `vault_`:
+    top_level_variable_regex = re.compile('^(?!vault_)(\w+)')
+
+    vault_key = VaultSecret(_bytes=to_bytes(vault_password))
+    vault = VaultLib(secrets=[(vault_file_name, vault_key)])
+
+    with open(vault_file_name, 'rb') as f:
+        encrypted_bytes = f.read()
+
+    decrypted_contents = to_text(vault.decrypt(encrypted_bytes, filename=vault_file_name))
+
+    new_content_lines = []
+    for line in decrypted_contents.split('\n'):
+        new_content_lines.append(top_level_variable_regex.sub(r'vault_\1', line))
+
+    with open(vault_file_name, 'wb') as f:
+        f.write(vault.encrypt('\n'.join(new_content_lines), secret=vault_key, vault_id=vault_file_name))
+
 
 def main():
     args = get_command_line_arguments()
 
     #see https://stackoverflow.com/a/43060743
-    # yaml.SafeLoader.add_constructor(u"!unsafe", unsafe_tag_constructor)
-    yaml.SafeLoader.add_constructor(u"!unsafe", Unsafe.from_yaml)
-    yaml.SafeDumper.add_multi_representer(Unsafe, Unsafe.to_yaml)
+    yaml.SafeLoader.add_constructor(u"!unsafe", unsafe_tag_constructor)
+
     vault = Vault(get_vault_password(args))
 
-    for file in get_file_list(args.dir_name):
-        print(file)
+    for file_name in get_file_list(args.dir_name):
+        print(file_name)
         # print("# data structure:\n")
-        structure = get_structure(get_decrypted_file_contents(file,vault))
-        with open(file[:-4] + "__map.yml", "w") as outfile:
-            yaml.safe_dump(get_decrypted_file_contents(file,vault), outfile)
-            outfile.write("# data structure:\n")
-            outfile.write(yaml.dump({"secret_structure__" + file.split("/")[-1][:-4]: structure}))
-            outfile.write("# mapping to vaulted_variables:\n")
+        structure = get_structure(get_decrypted_file_contents(file_name,vault))
+        with open(file_name[:-4] + "__map.yml", "w") as mapping_file:
+            mapping_file.write("# data structure:\n")
+            mapping_file.write(yaml.dump({"secret_structure__" + file_name.split("/")[-1][:-4]: structure}))
+            mapping_file.write("\n# mapping to vaulted_variables:\n")
             for key,_ in structure.items():
-                outfile.write(yaml.dump({key: '{{ vault_' + key + ' }}'}))
-        outfile.close()
-        yaml.safe_dump(get_decrypted_file_contents(file,vault))
-        # print(yaml.dump({"secret_structure__" + file.split("/")[-1][:-4]: structure}))
-        # print("# mapping to vaulted_variables:\n")
-        # for key,_ in structure.items():
-        #     print(yaml.dump({key: '{{ vault_' + key + ' }}'}))
-        # print("\n\n")
-        #vault.dump(data, open(file[:-4] + "__test.yml", "w"))
+                mapping_file.write(yaml.dump({key: '{{ vault_' + key + ' }}'}))
+        mapping_file.close()#
+
+        add_vault_prefixes(file_name, get_vault_password(args))
+
 if __name__ == "__main__":
     main()
