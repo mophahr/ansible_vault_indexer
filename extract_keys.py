@@ -100,6 +100,3 @@ def main():
         #vault.dump(data, open(file[:-4] + "__test.yml", "w"))
 if __name__ == "__main__":
     main()
-
-
-### NOTE: ./host_vars/s-a-0000005.bpc-mgmt.bgn/tower_admin__dh.yml has !unsafe
