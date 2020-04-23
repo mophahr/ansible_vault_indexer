@@ -68,9 +68,30 @@ def get_decrypted_file_contents(file_name, vault):
     raw_data = vault.load_raw(open(file_name).read())
     return yaml.safe_load(raw_data)
 
+def create_mapping_file(file_name, vault_data_structure):
+    '''
+    create a mapping file that contains the data structure found in the vault file
+    and a mapping to the vault_ variable names
+    '''
+    with open(file_name[:-4] + "__map.yml", "w") as mapping_file:
+
+        # write out the data structure found in the vault file:
+        mapping_file.write("### data structure in {}:\n#\n".format(file_name.split("/")[-1]))
+        print(yaml.dump(vault_data_structure).split("\n"))
+        for struct_line in yaml.dump(vault_data_structure).split("\n")[:-1]:
+            mapping_file.write("# {}\n".format(struct_line))
+
+        # add the mappings `KEYNAME: "{{ vault_KEYNAME }}"` for all keys
+        mapping_file.write("\n### mapping to vaulted_variables:\n")
+        for key,_ in vault_data_structure.items():
+            if not key.startswith("vault_"):
+                mapping_file.write(yaml.dump({key: '{{ vault_' + key + ' }}'}))
+            else:
+                mapping_file.write(yaml.dump({key[6:]: '{{ ' + key + ' }}'}))
+
 def add_vault_prefixes(vault_file_name, vault_password):
     '''
-    att the prefix `vault_` to all top level variable names
+    add the prefix `vault_` to all top level variable names
     '''
 
     # matches any word that's not a comment and that doesn't start with `vault_`:
@@ -104,13 +125,8 @@ def main():
         print(file_name)
         # print("# data structure:\n")
         structure = get_structure(get_decrypted_file_contents(file_name,vault))
-        with open(file_name[:-4] + "__map.yml", "w") as mapping_file:
-            mapping_file.write("# data structure:\n")
-            mapping_file.write(yaml.dump({"secret_structure__" + file_name.split("/")[-1][:-4]: structure}))
-            mapping_file.write("\n# mapping to vaulted_variables:\n")
-            for key,_ in structure.items():
-                mapping_file.write(yaml.dump({key: '{{ vault_' + key + ' }}'}))
-        mapping_file.close()#
+
+        create_mapping_file(file_name, structure)
 
         add_vault_prefixes(file_name, get_vault_password(args))
 
