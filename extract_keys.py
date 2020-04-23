@@ -1,11 +1,35 @@
 #!/usr/bin/env python
 
+'''
+extract_keys.py
+
+Script to perform the following steps:
+
+1.  Find all vault files (ending on .yml) in the file tree starting from `dir_name` [default: "./"]
+2.  Open all of them and extract their structure.
+    The script assumes that only the leaeves at the lowest level are secret, i.e., something like:
+
+        non_secret_key_level_1:
+          non-secret_key_level_2:
+            secret_value
+
+3.  Write everything but the secret value into a newly created file in the same folder as the vault file.
+    This new file gets the `__map` prefix
+4.  In the new file create a mapping `non_secret_key_level_1: "{{ vault_non_secret_key_level_1 }}"`
+5.  In the vault file, add the prefix `vault_` to the original name of all top-level keys unless they are already prefixed as such.
+    This can be turned off using the flag "--keep_vault_files".
+
+EXAMPLE USAGE:
+
+    ./extract_keys.py -d test/ -p 0000
+'''
+
+
 import os
 import ansible
 from argparse import ArgumentParser
 from ansible.parsing.vault import VaultLib, VaultSecret
 from ansible.module_utils._text import to_bytes, to_text
-from ansible_vault import Vault
 from getpass import getpass
 import yaml
 import re
@@ -26,6 +50,11 @@ def get_command_line_arguments():
     parser.add_argument("-p", "--ansible_vault_password",
                             dest="ansible_vault_password",
                             help="vault password")
+    parser.add_argument("-k", "--keep_vault_files",
+                            dest="keep_vault_files",
+                            default=False,
+                            help="use this flag to stop the script from altering the original vault files",
+                            action="store_true")
     return parser.parse_args()
 
 def get_file_list(dir_name):
@@ -64,9 +93,13 @@ def get_structure(data):
                 keys.update({key:get_structure(value)})
         return keys
 
-def get_decrypted_file_contents(file_name, vault):
-    raw_data = vault.load_raw(open(file_name).read())
-    return yaml.safe_load(raw_data)
+def get_decrypted_file_contents(vault_file_name, vault_password):
+    '''
+    return a yaml dictionary of the vault_contents
+    '''
+    _, _, text_contents = open_vault(vault_file_name, vault_password)
+
+    return yaml.safe_load(text_contents)
 
 def create_mapping_file(file_name, vault_data_structure):
     '''
@@ -77,7 +110,7 @@ def create_mapping_file(file_name, vault_data_structure):
 
         # write out the data structure found in the vault file:
         mapping_file.write("### data structure in {}:\n#\n".format(file_name.split("/")[-1]))
-        print(yaml.dump(vault_data_structure).split("\n"))
+
         for struct_line in yaml.dump(vault_data_structure).split("\n")[:-1]:
             mapping_file.write("# {}\n".format(struct_line))
 
@@ -85,9 +118,21 @@ def create_mapping_file(file_name, vault_data_structure):
         mapping_file.write("\n### mapping to vaulted_variables:\n")
         for key,_ in vault_data_structure.items():
             if not key.startswith("vault_"):
-                mapping_file.write(yaml.dump({key: '{{ vault_' + key + ' }}'}))
+                mapping_file.write(yaml.dump({key: "{{ vault_" + key + " }}"}))
             else:
-                mapping_file.write(yaml.dump({key[6:]: '{{ ' + key + ' }}'}))
+                mapping_file.write(yaml.dump({key[6:]: "{{ " + key + " }}"}))
+
+def open_vault(vault_file_name, vault_password):
+    '''
+    return decrypted contents of a vault (and teh vault itself)
+    '''
+    vault_key = VaultSecret(_bytes=to_bytes(vault_password))
+    vault = VaultLib(secrets=[(vault_file_name, vault_key)])
+
+    with open(vault_file_name, "rb") as f:
+        encrypted_bytes = f.read()
+
+    return vault, vault_key, to_text(vault.decrypt(encrypted_bytes, filename=vault_file_name))
 
 def add_vault_prefixes(vault_file_name, vault_password):
     '''
@@ -95,22 +140,16 @@ def add_vault_prefixes(vault_file_name, vault_password):
     '''
 
     # matches any word that's not a comment and that doesn't start with `vault_`:
-    top_level_variable_regex = re.compile('^(?!vault_)(\w+)')
+    top_level_variable_regex = re.compile("^(?!vault_)(\w+)")
 
-    vault_key = VaultSecret(_bytes=to_bytes(vault_password))
-    vault = VaultLib(secrets=[(vault_file_name, vault_key)])
-
-    with open(vault_file_name, 'rb') as f:
-        encrypted_bytes = f.read()
-
-    decrypted_contents = to_text(vault.decrypt(encrypted_bytes, filename=vault_file_name))
+    vault, vault_key, decrypted_contents = open_vault(vault_file_name, vault_password)
 
     new_content_lines = []
-    for line in decrypted_contents.split('\n'):
-        new_content_lines.append(top_level_variable_regex.sub(r'vault_\1', line))
+    for line in decrypted_contents.split("\n"):
+        new_content_lines.append(top_level_variable_regex.sub(r"vault_\1", line))
 
-    with open(vault_file_name, 'wb') as f:
-        f.write(vault.encrypt('\n'.join(new_content_lines), secret=vault_key, vault_id=vault_file_name))
+    with open(vault_file_name, "wb") as f:
+        f.write(vault.encrypt("\n".join(new_content_lines), secret=vault_key, vault_id=vault_file_name))
 
 
 def main():
@@ -119,16 +158,19 @@ def main():
     #see https://stackoverflow.com/a/43060743
     yaml.SafeLoader.add_constructor(u"!unsafe", unsafe_tag_constructor)
 
-    vault = Vault(get_vault_password(args))
+    ansible_vault_password = get_vault_password(args)
 
     for file_name in get_file_list(args.dir_name):
-        print(file_name)
-        # print("# data structure:\n")
-        structure = get_structure(get_decrypted_file_contents(file_name,vault))
+        structure = get_structure(get_decrypted_file_contents(file_name, ansible_vault_password))
 
+        print("saving structure and mapping of {}".format(file_name))
         create_mapping_file(file_name, structure)
 
-        add_vault_prefixes(file_name, get_vault_password(args))
+        if not args.keep_vault_files:
+            print("replacing top-level key names in the original vault file {}".format(file_name))
+            add_vault_prefixes(file_name, ansible_vault_password)
+        else:
+            print("keeping original vault file {}".format(file_name))
 
 if __name__ == "__main__":
     main()
