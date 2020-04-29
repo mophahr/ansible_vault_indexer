@@ -32,6 +32,7 @@ from ansible.parsing.vault import VaultLib, VaultSecret
 from ansible.module_utils._text import to_bytes, to_text
 from getpass import getpass
 import yaml
+import sys
 import re
 
 def unsafe_tag_constructor(loader, node):
@@ -154,9 +155,19 @@ def add_vault_prefixes(vault_file_name, vault_password):
     with open(vault_file_name, "wb") as f:
         f.write(vault.encrypt("\n".join(new_content_lines), secret=vault_key, vault_id=vault_file_name))
 
+def get_python_version():
+    if sys.version_info >= (3, 0):
+        return 3
+    else:
+        return 2
 
 def main():
     args = get_command_line_arguments()
+
+    if not get_python_version() == 3:
+        print("please use Python 3")
+        return 1
+
 
     #see https://stackoverflow.com/a/43060743
     yaml.SafeLoader.add_constructor(u"!unsafe", unsafe_tag_constructor)
