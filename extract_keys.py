@@ -153,7 +153,7 @@ def add_vault_prefixes(vault_file_name, vault_password):
         new_content_lines.append(top_level_variable_regex.sub(r"vault_\1", line))
 
     with open(vault_file_name, "wb") as f:
-        f.write(vault.encrypt("\n".join(new_content_lines), secret=vault_key, vault_id=vault_file_name))
+        f.write(vault.encrypt("\n".join(new_content_lines), secret=vault_key, vault_id=vault_file_name.split("/")[-2]))
 
 def get_python_version():
     if sys.version_info >= (3, 0):
