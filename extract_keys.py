@@ -122,13 +122,13 @@ def create_mapping_file(file_name, vault_data_structure):
         mapping_file.write("\n### mapping to vaulted_variables:\n")
         for key,_ in vault_data_structure.items():
             if not key.startswith("vault_"):
-                mapping_file.write(yaml.dump({key: "{{ vault_" + key + " }}"}))
+                mapping_file.write(yaml.dump({key: "{{ vault_" + key.rstrip('\n') + " }}"},width=1000))
             else:
-                mapping_file.write(yaml.dump({key[6:]: "{{ " + key + " }}"}))
+                mapping_file.write(yaml.dump({key[6:]: "{{ " + key.rstrip('\n') + " }}"},width=1000))
 
 def open_vault(vault_file_name, vault_password):
     '''
-    return decrypted contents of a vault (and teh vault itself)
+    return decrypted contents of a vault (and the vault itself)
     '''
     vault_key = VaultSecret(_bytes=to_bytes(vault_password))
     vault = VaultLib(secrets=[(vault_file_name, vault_key)])
