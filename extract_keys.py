@@ -138,7 +138,7 @@ def open_vault(vault_file_name, vault_password):
 
     return vault, vault_key, to_text(vault.decrypt(encrypted_bytes, filename=vault_file_name))
 
-def add_vault_prefixes(vault_file_name, vault_password):
+def add_vault_prefixes(vault_file_name, vault_password, vault_id):
     '''
     add the prefix `vault_` to all top level variable names
     '''
@@ -153,7 +153,7 @@ def add_vault_prefixes(vault_file_name, vault_password):
         new_content_lines.append(top_level_variable_regex.sub(r"vault_\1", line))
 
     with open(vault_file_name, "wb") as f:
-        f.write(vault.encrypt("\n".join(new_content_lines), secret=vault_key, vault_id=vault_file_name.split("/")[-2]))
+        f.write(vault.encrypt("\n".join(new_content_lines), secret=vault_key, vault_id=vault_id))
 
 def get_python_version():
     if sys.version_info >= (3, 0):
@@ -174,6 +174,8 @@ def main():
 
     ansible_vault_password = get_vault_password(args)
 
+    ansible_vault_id = args.dir_name.split("/")[-1]
+
     for file_name in get_file_list(args.dir_name):
         structure = get_structure(get_decrypted_file_contents(file_name, ansible_vault_password))
 
@@ -182,7 +184,7 @@ def main():
 
         if not args.keep_vault_files:
             print("replacing top-level key names in the original vault file {}".format(file_name))
-            add_vault_prefixes(file_name, ansible_vault_password)
+            add_vault_prefixes(file_name, ansible_vault_password, ansible_vault_id)
         else:
             print("keeping original vault file {}".format(file_name))
 
